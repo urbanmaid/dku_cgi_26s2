@@ -1,0 +1,4 @@
+{
+  "name": "CityCourier.Runtime",
+  "references": ["Unity.InputSystem"]
+}

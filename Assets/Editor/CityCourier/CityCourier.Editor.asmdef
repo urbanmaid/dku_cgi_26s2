@@ -1,0 +1,5 @@
+{
+  "name": "CityCourier.Editor",
+  "references": ["CityCourier.Runtime"],
+  "includePlatforms": ["Editor"]
+}

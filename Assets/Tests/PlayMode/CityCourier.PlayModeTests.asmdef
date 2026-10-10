@@ -1,0 +1,5 @@
+{
+  "name": "CityCourier.PlayModeTests",
+  "references": ["CityCourier.Runtime"],
+  "optionalUnityReferences": ["TestAssemblies"]
+}
