@@ -115,6 +115,11 @@ namespace CityCourier.Editor
             var motor = player.AddComponent<CourierMotor>();
             stage.Player = motor;
             motor.Stage = stage;
+            motor.SlideSpeed = 17f;
+            motor.SlideEndSpeed = 7f;
+            motor.SlideDuration = 0.85f;
+            motor.SlideEasePower = 2f;
+            motor.TurnSharpness = 12f;
             var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             body.name = "Courier Body";
             Object.DestroyImmediate(body.GetComponent<Collider>());
@@ -137,6 +142,7 @@ namespace CityCourier.Editor
             var follow = camera.GetComponent<CourierCamera>();
             if (follow == null) follow = camera.gameObject.AddComponent<CourierCamera>();
             follow.Target = player.transform;
+            follow.RecenterTime = 0.3f;
             motor.View = follow;
             camera.transform.position = new Vector3(0, 3.5f, -13);
             camera.transform.rotation = Quaternion.Euler(18, 0, 0);

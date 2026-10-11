@@ -15,7 +15,17 @@ namespace CityCourier
         public float Acceleration = 36f;
         public float JumpSpeed = 10f;
         public float Gravity = 27f;
-        public float SlideSpeed = 14f;
+        [Header("Slide")]
+        [Tooltip("Speed applied immediately when a ground slide begins.")]
+        public float SlideSpeed = 17f;
+        [Tooltip("Speed retained after the slide burst has eased out.")]
+        public float SlideEndSpeed = 7f;
+        public float SlideDuration = 0.85f;
+        [Tooltip("Higher values make the initial burst lose speed sooner.")]
+        [Range(1f, 4f)] public float SlideEasePower = 2f;
+        [Header("Turning")]
+        [Tooltip("How quickly keyboard direction changes rotate the player.")]
+        public float TurnSharpness = 12f;
         public float WallRunSpeed = 12f;
         public float WallRunDuration = 2.5f;
         public LayerMask WorldMask = 1;
@@ -29,7 +39,7 @@ namespace CityCourier
 
         CharacterController controller;
         Vector3 horizontal, wallNormal;
-        float vertical, slideTime, wallTime, wallLock, coyote, jumpBuffer;
+        float vertical, slideElapsed, wallTime, wallLock, coyote, jumpBuffer;
         const float StandingHeight = 1.8f;
         const float SlidingHeight = 0.8f;
 
@@ -66,7 +76,13 @@ namespace CityCourier
 
             float yaw = View != null ? View.Yaw : 0;
             Vector3 wish = Quaternion.Euler(0, yaw, 0) * new Vector3(input.Move.x, 0, input.Move.y);
-            if (wish.sqrMagnitude > 0.01f && !IsSliding) Heading = wish.normalized;
+            if (wish.sqrMagnitude > 0.01f && !IsSliding)
+            {
+                Quaternion from = Quaternion.LookRotation(Heading, Vector3.up);
+                Quaternion to = Quaternion.LookRotation(wish.normalized, Vector3.up);
+                float turnBlend = 1f - Mathf.Exp(-TurnSharpness * dt);
+                Heading = (Quaternion.Slerp(from, to, turnBlend) * Vector3.forward).normalized;
+            }
             if (input.Slide)
             {
                 if (grounded) BeginSlide();
@@ -91,14 +107,21 @@ namespace CityCourier
                 vertical = Mathf.Clamp(vertical - 3f * dt, -0.7f, 2f);
             }
             else if (!IsSliding && wallLock <= 0)
-                horizontal = Vector3.MoveTowards(horizontal, wish * (input.Walk ? WalkSpeed : RunSpeed),
+                horizontal = Vector3.MoveTowards(horizontal, Heading * input.Move.magnitude * (input.Walk ? WalkSpeed : RunSpeed),
                     Acceleration * (grounded ? 1 : 0.55f) * dt);
 
             if (IsSliding && !IsDiving)
             {
-                slideTime -= dt;
-                horizontal = Vector3.MoveTowards(horizontal, Heading * SlideSpeed, 12f * dt);
-                if (slideTime <= 0 && !input.SlideHeld && CanStand())
+                // Do not consume another slice of momentum on the exact frame a slide jump starts.
+                if (jumpBuffer <= 0f)
+                {
+                    slideElapsed += dt;
+                    float normalizedTime = Mathf.Clamp01(slideElapsed / Mathf.Max(0.01f, SlideDuration));
+                    float easeOut = Mathf.Pow(1f - normalizedTime, SlideEasePower);
+                    float currentSlideSpeed = Mathf.Lerp(SlideEndSpeed, SlideSpeed, easeOut);
+                    horizontal = Heading * currentSlideSpeed;
+                }
+                if (slideElapsed >= SlideDuration && !input.SlideHeld && CanStand())
                 { IsSliding = false; SetHeight(StandingHeight); }
             }
 
@@ -107,7 +130,9 @@ namespace CityCourier
                 bool wallJump = !grounded && wallLock <= 0 && FindWall(out wallNormal);
                 if ((coyote > 0 || wallJump) && CanStand())
                 {
+                    // A slide jump keeps the current horizontal momentum and only restores standing height.
                     IsSliding = false;
+                    IsDiving = false;
                     SetHeight(StandingHeight);
                     vertical = JumpSpeed;
                     if (wallJump)
@@ -134,7 +159,7 @@ namespace CityCourier
         void BeginSlide()
         {
             IsSliding = true;
-            slideTime = 0.65f;
+            slideElapsed = 0f;
             SetHeight(SlidingHeight);
             horizontal = Heading * SlideSpeed;
         }
@@ -174,7 +199,7 @@ namespace CityCourier
             transform.position = position;
             controller.enabled = true;
             horizontal = Vector3.zero;
-            vertical = wallTime = wallLock = slideTime = coyote = jumpBuffer = 0;
+            vertical = wallTime = wallLock = slideElapsed = coyote = jumpBuffer = 0;
             IsSliding = IsDiving = IsWallRunning = false;
             Heading = Vector3.forward;
             SetHeight(StandingHeight);

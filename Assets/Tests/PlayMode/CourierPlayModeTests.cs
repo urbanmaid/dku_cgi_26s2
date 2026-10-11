@@ -79,6 +79,71 @@ public sealed class CourierPlayModeTests
     }
 
     [UnityTest]
+    public IEnumerator SlideStartsWithBurstAndEasesToLowerSpeed()
+    {
+        yield return Settle(new Vector3(0, 0.1f, 115));
+        Tick(new CourierInput { Move = Vector2.up, Slide = true, SlideHeld = true });
+        float initialSpeed = new Vector2(motor.Velocity.x, motor.Velocity.z).magnitude;
+        for (int i = 0; i < 35; i++)
+        {
+            Tick(new CourierInput { Move = Vector2.up, SlideHeld = true });
+            yield return new WaitForFixedUpdate();
+        }
+        float easedSpeed = new Vector2(motor.Velocity.x, motor.Velocity.z).magnitude;
+        Assert.That(initialSpeed, Is.GreaterThan(16f));
+        Assert.That(easedSpeed, Is.LessThan(initialSpeed - 4f));
+        Assert.That(easedSpeed, Is.GreaterThanOrEqualTo(motor.SlideEndSpeed - 0.1f));
+    }
+
+    [UnityTest]
+    public IEnumerator JumpDuringSlideKeepsForwardMomentum()
+    {
+        yield return Settle(new Vector3(0, 0.1f, 115));
+        Tick(new CourierInput { Move = Vector2.up, Slide = true, SlideHeld = true });
+        for (int i = 0; i < 8; i++)
+        {
+            Tick(new CourierInput { Move = Vector2.up, SlideHeld = true });
+            yield return new WaitForFixedUpdate();
+        }
+        float speedBeforeJump = new Vector2(motor.Velocity.x, motor.Velocity.z).magnitude;
+        Tick(new CourierInput { Move = Vector2.up, Jump = true, SlideHeld = true });
+        float speedAfterJump = new Vector2(motor.Velocity.x, motor.Velocity.z).magnitude;
+        Assert.That(motor.IsSliding, Is.False);
+        Assert.That(motor.Velocity.y, Is.GreaterThan(8f));
+        Assert.That(speedAfterJump, Is.GreaterThanOrEqualTo(speedBeforeJump - 0.1f));
+    }
+
+    [UnityTest]
+    public IEnumerator KeyboardTurnChangesHeadingGradually()
+    {
+        yield return Settle(new Vector3(0, 0.1f, 115));
+        Tick(new CourierInput { Move = Vector2.right });
+        Assert.That(Vector3.Dot(motor.Heading, Vector3.right), Is.GreaterThan(0f));
+        Assert.That(Vector3.Dot(motor.Heading, Vector3.right), Is.LessThan(0.95f));
+        for (int i = 0; i < 30; i++)
+        {
+            Tick(new CourierInput { Move = Vector2.right });
+            yield return new WaitForFixedUpdate();
+        }
+        Assert.That(Vector3.Dot(motor.Heading, Vector3.right), Is.GreaterThan(0.99f));
+    }
+
+    [UnityTest]
+    public IEnumerator CameraRecenterMovesSmoothlyBehindHeading()
+    {
+        CourierCamera view = motor.View;
+        view.ApplyLook(new Vector2(90f, 0f), false, Vector3.forward);
+        Assert.That(view.Yaw, Is.EqualTo(90f).Within(0.01f));
+        view.ApplyLook(Vector2.zero, true, Vector3.forward);
+        Assert.That(view.Yaw, Is.EqualTo(90f).Within(0.01f), "Recenter must not snap on input.");
+        yield return null;
+        Assert.That(view.Yaw, Is.LessThan(90f));
+        Assert.That(view.Yaw, Is.GreaterThan(0f));
+        yield return new WaitForSecondsRealtime(1f);
+        Assert.That(Mathf.Abs(Mathf.DeltaAngle(view.Yaw, 0f)), Is.LessThan(1f));
+    }
+
+    [UnityTest]
     public IEnumerator WallRunCrossesLongGap()
     {
         yield return Settle(new Vector3(2, 0.1f, 22));
@@ -113,8 +178,9 @@ public sealed class CourierPlayModeTests
     {
         yield return Settle(new Vector3(0, 0.1f, 70));
         Tick(new CourierInput { Move = Vector2.up, Slide = true });
-        for (int i = 0; i < 45 && motor.transform.position.z < 78.4f; i++)
+        for (int i = 0; i < 60 && motor.transform.position.z < 78.6f; i++)
         { Tick(new CourierInput { Move = Vector2.up, SlideHeld = true }); yield return new WaitForFixedUpdate(); }
+        Assert.That(motor.transform.position.z, Is.GreaterThanOrEqualTo(78.6f));
         Tick(new CourierInput { Move = Vector2.up, Jump = true });
         Assert.That(motor.Velocity.y, Is.GreaterThan(8), "Jump must fit between tunnel exit and edge.");
         for (int i = 0; i < 65; i++) { Tick(new CourierInput { Move = Vector2.up }); yield return new WaitForFixedUpdate(); }
@@ -135,7 +201,7 @@ public sealed class CourierPlayModeTests
         for (int i = 0; i < 60; i++)
         { Tick(new CourierInput { Move = Vector2.up, SlideHeld = true }); yield return new WaitForFixedUpdate(); }
         Assert.That(stage.DamageCount, Is.Zero);
-        Assert.That(motor.transform.position.z, Is.GreaterThan(114));
+        Assert.That(motor.transform.position.z, Is.GreaterThan(113.2f));
     }
 
     [UnityTest]
