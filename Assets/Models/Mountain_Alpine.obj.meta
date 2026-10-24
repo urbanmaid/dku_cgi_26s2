@@ -1,0 +1,25 @@
+fileFormatVersion: 2
+guid: 70cd30b1682b4e5ba61809d50f164965
+ModelImporter:
+  serializedVersion: 22200
+  internalIDToNameTable: []
+  externalObjects: {}
+  materials:
+    materialImportMode: 2
+  animations:
+    legacyGenerateAnimations: 4
+  meshCompression: 0
+  isReadable: 1
+  importBlendShapes: 0
+  importVisibility: 1
+  importCameras: 0
+  importLights: 0
+  meshOptimizationFlags: -1
+  importNormals: 1
+  importTangents: 3
+  normalSmoothingSource: 0
+  preserveHierarchy: 1
+  indexFormat: 0
+  fileIdsGeneration: 2
+  assetBundleName: 
+  assetBundleVariant: 
