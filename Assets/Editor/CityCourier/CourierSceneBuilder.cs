@@ -142,28 +142,41 @@ namespace CityCourier.Editor
             var follow = camera.GetComponent<CourierCamera>();
             if (follow == null) follow = camera.gameObject.AddComponent<CourierCamera>();
             follow.Target = player.transform;
+            follow.Motor = motor;
             follow.RecenterTime = 0.3f;
             motor.View = follow;
             camera.transform.position = new Vector3(0, 3.5f, -13);
             camera.transform.rotation = Quaternion.Euler(18, 0, 0);
 
-            // Simple silhouettes and colored road marks communicate a near-future city without UI.
-            for (int i = 0; i < 14; i++)
-            {
-                float height = 8 + (i * 7 % 19);
-                foreach (float side in new[] { -1f, 1f })
-                    Visual("City Tower", new Vector3(side * (10 + i % 3 * 3), height / 2 - 5, i * 13),
-                        new Vector3(6, height, 8), dark);
-            }
-            RenderSettings.fog = true;
-            RenderSettings.fogColor = new Color(0.15f, 0.2f, 0.29f);
-            RenderSettings.fogMode = FogMode.Linear;
-            RenderSettings.fogStartDistance = 55;
-            RenderSettings.fogEndDistance = 210;
+            var audio = root.gameObject.AddComponent<CourierAudio>();
+            audio.Stage = stage;
+            audio.Motor = motor;
+            audio.BgmClip = LoadClip("Cyberpunk_BGM");
+            audio.FootstepClip = LoadClip("SFX_Footstep");
+            audio.JumpClip = LoadClip("SFX_Jump");
+            audio.WallJumpClip = LoadClip("SFX_WallJump");
+            audio.SlideClip = LoadClip("SFX_Slide");
+            audio.DiveClip = LoadClip("SFX_Dive");
+            audio.LandClip = LoadClip("SFX_Land");
+            audio.WallRunLoopClip = LoadClip("SFX_WallRunLoop");
+            audio.LetterPickupClip = LoadClip("SFX_LetterPickup");
+            audio.CheckpointClip = LoadClip("SFX_Checkpoint");
+            audio.DamageClip = LoadClip("SFX_Damage");
+            audio.StageClearClip = LoadClip("SFX_StageClear");
+
+            // Build Cyberpunk City Skyline, Highway Infrastructure, and Parkour Route Guidance Props
+            var cityProps = root.gameObject.AddComponent<CourierCityProps>();
+            cityProps.RebuildCity();
+
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
             AssetDatabase.SaveAssets();
-            Debug.Log("[POC BUILD OK] SampleScene saved with five letters and single-scene tutorial course.");
+            Debug.Log("[POC BUILD OK] SampleScene saved with Cyberpunk City props, audio, and five letters.");
+        }
+
+        static AudioClip LoadClip(string name)
+        {
+            return AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/CityCourier/" + name + ".wav");
         }
 
         static Material Material(string name, Color color)

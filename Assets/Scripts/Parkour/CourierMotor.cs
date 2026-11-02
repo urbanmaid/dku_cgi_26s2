@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -34,14 +35,27 @@ namespace CityCourier
         public bool IsWallRunning { get; private set; }
         public bool IsDiving { get; private set; }
         public Vector3 Velocity => horizontal + Vector3.up * vertical;
+        public float HorizontalSpeed => new Vector2(horizontal.x, horizontal.z).magnitude;
         public Vector3 Heading { get; private set; } = Vector3.forward;
+        public Vector3 WallNormal => wallNormal;
+        public float TurnRate { get; private set; }
+        public float LastLandingImpact { get; private set; }
         public bool Grounded => controller != null && controller.isGrounded;
+
+        public event Action<bool> Jumped;
+        public event Action<float, bool> Landed;
+        public event Action<bool> SlideTriggered;
+        public event Action<Vector3> WallRunBegan;
+        public event Action Footstepped;
 
         CharacterController controller;
         Vector3 horizontal, wallNormal;
         float vertical, slideElapsed, wallTime, wallLock, coyote, jumpBuffer;
+        float airborneTime, maxFallSpeed, stepDistanceAccum;
+        bool wasGrounded = true;
         const float StandingHeight = 1.8f;
         const float SlidingHeight = 0.8f;
+        const float StepStride = 2.2f;
 
         void Awake() { controller = GetComponent<CharacterController>(); }
 
@@ -64,18 +78,34 @@ namespace CityCourier
         {
             if (controller == null) controller = GetComponent<CharacterController>();
             bool grounded = controller.isGrounded;
+            bool wasWallRunning = IsWallRunning;
             wallLock = Mathf.Max(0, wallLock - dt);
             jumpBuffer = input.Jump ? 0.14f : Mathf.Max(0, jumpBuffer - dt);
             coyote = grounded ? 0.12f : Mathf.Max(0, coyote - dt);
             if (grounded)
             {
+                if (!wasGrounded && airborneTime > 0.05f)
+                {
+                    bool landedFromDive = IsDiving;
+                    LastLandingImpact = Mathf.Max(Mathf.Abs(vertical), maxFallSpeed);
+                    if (LastLandingImpact > 2.5f)
+                        Landed?.Invoke(LastLandingImpact, landedFromDive);
+                }
+                airborneTime = 0f;
+                maxFallSpeed = 0f;
                 if (vertical < 0) vertical = -2f;
                 wallTime = 0;
-                if (IsDiving) { BeginSlide(); IsDiving = false; }
+                if (IsDiving) { BeginSlide(false); IsDiving = false; }
+            }
+            else
+            {
+                airborneTime += dt;
+                if (vertical < 0f) maxFallSpeed = Mathf.Max(maxFallSpeed, -vertical);
             }
 
             float yaw = View != null ? View.Yaw : 0;
             Vector3 wish = Quaternion.Euler(0, yaw, 0) * new Vector3(input.Move.x, 0, input.Move.y);
+            Vector3 previousHeading = Heading;
             if (wish.sqrMagnitude > 0.01f && !IsSliding)
             {
                 Quaternion from = Quaternion.LookRotation(Heading, Vector3.up);
@@ -83,16 +113,23 @@ namespace CityCourier
                 float turnBlend = 1f - Mathf.Exp(-TurnSharpness * dt);
                 Heading = (Quaternion.Slerp(from, to, turnBlend) * Vector3.forward).normalized;
             }
+            float signedTurn = Vector3.SignedAngle(previousHeading, Heading, Vector3.up);
+            TurnRate = dt > 0.0001f ? signedTurn / dt : 0f;
+
             if (input.Slide)
             {
-                if (grounded) BeginSlide();
-                else
+                if (grounded)
+                {
+                    if (!IsSliding) BeginSlide(true);
+                }
+                else if (!IsDiving)
                 {
                     IsDiving = true;
                     IsSliding = true;
                     SetHeight(SlidingHeight);
                     horizontal = Heading * SlideSpeed;
                     vertical = -24;
+                    SlideTriggered?.Invoke(true);
                 }
             }
 
@@ -100,6 +137,7 @@ namespace CityCourier
                 wallTime < WallRunDuration && input.Move.sqrMagnitude > 0.1f && FindWall(out wallNormal);
             if (IsWallRunning)
             {
+                if (!wasWallRunning) WallRunBegan?.Invoke(wallNormal);
                 wallTime += dt;
                 Vector3 along = Vector3.ProjectOnPlane(wish, wallNormal).normalized;
                 if (along.sqrMagnitude < 0.1f) along = Vector3.ProjectOnPlane(Heading, wallNormal).normalized;
@@ -142,26 +180,57 @@ namespace CityCourier
                         IsWallRunning = false;
                     }
                     coyote = jumpBuffer = 0;
+                    airborneTime = 0.06f;
+                    Jumped?.Invoke(wallJump);
                 }
             }
             if (!IsWallRunning) vertical -= Gravity * dt;
             CollisionFlags flags = controller.Move((horizontal + Vector3.up * vertical) * dt);
             if ((flags & CollisionFlags.Above) != 0 && vertical > 0) vertical = 0;
+
+            bool groundedAfterMove = controller.isGrounded || (flags & CollisionFlags.Below) != 0;
+            if (groundedAfterMove && !wasGrounded && airborneTime > 0.05f)
+            {
+                bool landedFromDive = IsDiving;
+                LastLandingImpact = Mathf.Max(Mathf.Abs(vertical), maxFallSpeed);
+                if (LastLandingImpact > 2.5f)
+                    Landed?.Invoke(LastLandingImpact, landedFromDive);
+                airborneTime = 0f;
+                maxFallSpeed = 0f;
+            }
+            wasGrounded = groundedAfterMove;
+
+            if (groundedAfterMove && !IsSliding && HorizontalSpeed > 1.5f)
+            {
+                stepDistanceAccum += HorizontalSpeed * dt;
+                if (stepDistanceAccum >= StepStride)
+                {
+                    stepDistanceAccum -= StepStride;
+                    Footstepped?.Invoke();
+                }
+            }
+            else if (!groundedAfterMove || IsSliding)
+            {
+                stepDistanceAccum = 0f;
+            }
+
             if (Body != null)
             {
                 Body.localPosition = new Vector3(0, controller.height / 2, 0);
                 Body.localScale = new Vector3(0.65f, controller.height / 2, 0.65f);
                 Body.rotation = Quaternion.LookRotation(Heading);
             }
+            if (View != null && !AutomaticInput) View.StepEffects(dt);
             if (transform.position.y < -7 && Stage != null) Stage.Damage("추락");
         }
 
-        void BeginSlide()
+        void BeginSlide(bool notifyEvent = true)
         {
             IsSliding = true;
             slideElapsed = 0f;
             SetHeight(SlidingHeight);
             horizontal = Heading * SlideSpeed;
+            if (notifyEvent) SlideTriggered?.Invoke(false);
         }
 
         void SetHeight(float height)
@@ -181,7 +250,9 @@ namespace CityCourier
         {
             Vector3 origin = transform.position + Vector3.up * 1f;
             Vector3 right = Vector3.Cross(Vector3.up, Heading);
-            Vector3[] directions = { right, -right, Heading };
+            Vector3 diagRight = (right + Heading).normalized;
+            Vector3 diagLeft = (-right + Heading).normalized;
+            Vector3[] directions = { right, -right, Heading, diagRight, diagLeft };
             foreach (Vector3 direction in directions)
             {
                 if (Physics.Raycast(origin, direction, out RaycastHit hit, 0.85f, WorldMask, QueryTriggerInteraction.Ignore)
@@ -200,6 +271,8 @@ namespace CityCourier
             controller.enabled = true;
             horizontal = Vector3.zero;
             vertical = wallTime = wallLock = slideElapsed = coyote = jumpBuffer = 0;
+            airborneTime = maxFallSpeed = stepDistanceAccum = TurnRate = 0f;
+            wasGrounded = true;
             IsSliding = IsDiving = IsWallRunning = false;
             Heading = Vector3.forward;
             SetHeight(StandingHeight);

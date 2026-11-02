@@ -96,6 +96,20 @@ public sealed class CourierPlayModeTests
     }
 
     [UnityTest]
+    public IEnumerator SlideSpamWhileSlidingDoesNotResetBurstInfiniteBoost()
+    {
+        yield return Settle(new Vector3(0, 0.1f, 115));
+        Tick(new CourierInput { Move = Vector2.up, Slide = true, SlideHeld = true });
+        for (int i = 0; i < 30; i++)
+        {
+            Tick(new CourierInput { Move = Vector2.up, Slide = true, SlideHeld = true });
+            yield return new WaitForFixedUpdate();
+        }
+        float speedAfterSpam = motor.HorizontalSpeed;
+        Assert.That(speedAfterSpam, Is.LessThan(12f), "Spamming slide mid-slide must not reset burst to 17 m/s.");
+    }
+
+    [UnityTest]
     public IEnumerator JumpDuringSlideKeepsForwardMomentum()
     {
         yield return Settle(new Vector3(0, 0.1f, 115));
@@ -141,6 +155,106 @@ public sealed class CourierPlayModeTests
         Assert.That(view.Yaw, Is.GreaterThan(0f));
         yield return new WaitForSecondsRealtime(1f);
         Assert.That(Mathf.Abs(Mathf.DeltaAngle(view.Yaw, 0f)), Is.LessThan(1f));
+    }
+
+    [UnityTest]
+    public IEnumerator DynamicFovExpandsDuringHighSpeedSlideAndRecovers()
+    {
+        yield return Settle(new Vector3(0, 0.1f, 115));
+        CourierCamera view = motor.View;
+        Assert.That(view.CurrentFov, Is.EqualTo(view.BaseFov).Within(0.5f));
+        Tick(new CourierInput { Move = Vector2.up, Slide = true, SlideHeld = true });
+        for (int i = 0; i < 20; i++)
+        {
+            Tick(new CourierInput { Move = Vector2.up, SlideHeld = true });
+            yield return new WaitForFixedUpdate();
+        }
+        Assert.That(view.CurrentFov, Is.GreaterThan(view.BaseFov + 4.5f));
+        for (int i = 0; i < 65; i++)
+        {
+            Tick(default);
+            yield return new WaitForFixedUpdate();
+        }
+        Assert.That(view.CurrentFov, Is.LessThan(view.BaseFov + 1.5f));
+    }
+
+    [UnityTest]
+    public IEnumerator CameraDoesNotTiltOnGroundRunningAndTiltsGentlyOnWallRun()
+    {
+        yield return Settle(new Vector3(0, 0.1f, 115));
+        CourierCamera view = motor.View;
+        for (int i = 0; i < 15; i++)
+        {
+            Tick(new CourierInput { Move = new Vector2(1f, 1f).normalized });
+            yield return new WaitForFixedUpdate();
+        }
+        Assert.That(Mathf.Abs(view.CurrentRoll), Is.LessThan(0.1f), "Ground running must not rock/tilt camera.");
+
+        yield return Settle(new Vector3(2, 0.1f, 22));
+        Tick(new CourierInput { Move = Vector2.up, Jump = true });
+        for (int i = 0; i < 18; i++)
+        {
+            Tick(new CourierInput { Move = Vector2.up });
+            yield return new WaitForFixedUpdate();
+        }
+        Assert.That(motor.IsWallRunning, Is.True);
+        Assert.That(Mathf.Abs(view.CurrentRoll), Is.GreaterThan(2.5f));
+        Assert.That(Mathf.Abs(view.CurrentRoll), Is.LessThanOrEqualTo(view.WallRunTiltAngle + 0.5f));
+    }
+
+    [UnityTest]
+    public IEnumerator LandingImpactEasesSmoothlyWithoutInstantSnap()
+    {
+        yield return Settle(new Vector3(0, 0.1f, 115));
+        CourierCamera view = motor.View;
+        Tick(new CourierInput { Move = Vector2.up, Jump = true });
+        for (int i = 0; i < 5; i++) { Tick(new CourierInput { Move = Vector2.up }); yield return new WaitForFixedUpdate(); }
+        Tick(new CourierInput { Move = Vector2.up, Slide = true, SlideHeld = true });
+        for (int i = 0; i < 20 && !motor.Grounded; i++)
+        {
+            Tick(new CourierInput { Move = Vector2.up, SlideHeld = true });
+            yield return new WaitForFixedUpdate();
+        }
+        Assert.That(motor.Grounded, Is.True);
+        Assert.That(motor.LastLandingImpact, Is.GreaterThan(10f));
+        // On the exact landing frame, pitch offset must not snap to a huge angle
+        Assert.That(view.LandingPitchOffset, Is.LessThan(1.5f));
+        // Over the next few frames, it smoothly eases in
+        for (int i = 0; i < 4; i++) { Tick(default); yield return new WaitForFixedUpdate(); }
+        Assert.That(view.LandingPitchOffset, Is.GreaterThan(0.2f));
+    }
+
+    [UnityTest]
+    public IEnumerator CyberpunkAudioPlaysBgmAndParkourActionSfx()
+    {
+        var audio = stage.GetComponent<CourierAudio>();
+        if (audio == null) audio = stage.gameObject.AddComponent<CourierAudio>();
+        audio.Stage = stage;
+        audio.Motor = motor;
+        audio.StartBgm();
+        Assert.That(audio.IsBgmPlaying, Is.True);
+
+        yield return Settle(new Vector3(0, 0.1f, 115));
+        int beforeCount = audio.SfxPlayCount;
+        Tick(new CourierInput { Move = Vector2.up, Jump = true });
+        Assert.That(audio.SfxPlayCount, Is.GreaterThan(beforeCount));
+        Assert.That(audio.LastPlayedSfx, Is.EqualTo("Jump"));
+
+        for (int i = 0; i < 4; i++) { Tick(new CourierInput { Move = Vector2.up }); yield return new WaitForFixedUpdate(); }
+        Tick(new CourierInput { Move = Vector2.up, Slide = true });
+        Assert.That(audio.LastPlayedSfx, Is.EqualTo("Dive"));
+    }
+
+    [UnityTest]
+    public IEnumerator CyberpunkCityPropsAreBuiltWithZeroColliders()
+    {
+        var city = stage.GetComponent<CourierCityProps>();
+        Assert.That(city, Is.Not.Null);
+        Transform container = stage.transform.Find("Cyberpunk City Props");
+        Assert.That(container, Is.Not.Null);
+        Assert.That(container.GetComponentsInChildren<Renderer>().Length, Is.GreaterThan(80));
+        Assert.That(container.GetComponentsInChildren<Collider>().Length, Is.Zero);
+        yield return null;
     }
 
     [UnityTest]
