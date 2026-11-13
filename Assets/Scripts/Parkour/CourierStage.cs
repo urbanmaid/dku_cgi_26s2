@@ -20,12 +20,24 @@ namespace CityCourier
         public int LetterCount { get; private set; }
         public int DamageCount { get; private set; }
         public Vector3 Checkpoint { get; private set; } = new Vector3(0, 0.1f, -8);
+        public event Action StageStarted;
         public event Action<int, int> LettersChanged;
+        public event Action<Vector3> CheckpointReached;
+        public event Action<string> Damaged;
+        public event Action RoadOpened;
         public event Action StageCompleted;
         bool[] letters;
         float damageCooldown;
 
-        void Awake() { letters = new bool[RequiredLetters]; }
+        void Awake()
+        {
+            letters = new bool[RequiredLetters];
+            if (GetComponent<CourierAudio>() == null)
+                gameObject.AddComponent<CourierAudio>();
+            if (GetComponent<CourierCityProps>() == null)
+                gameObject.AddComponent<CourierCityProps>();
+        }
+
         void Start()
         {
             Cursor.lockState = CursorLockMode.Locked;
@@ -54,6 +66,7 @@ namespace CityCourier
             EntryBarrier.SetActive(false);
             Checkpoint = StartPosition;
             Player.Teleport(Checkpoint);
+            StageStarted?.Invoke();
             Debug.Log("[출발] WASD / LS 이동, Ctrl 천천히 걷기. 노란 편지를 모두 수집하세요.");
         }
 
@@ -71,6 +84,7 @@ namespace CityCourier
         {
             if (!Started || Completed || point.z <= Checkpoint.z) return;
             Checkpoint = point;
+            CheckpointReached?.Invoke(Checkpoint);
             Debug.Log("[체크포인트] " + point.z.ToString("F0") + "m 구간 저장");
         }
 
@@ -81,6 +95,7 @@ namespace CityCourier
             DamageCount++;
             Debug.Log($"[피격] {reason}. 체크포인트로 복귀합니다. 누적 피격: {DamageCount}");
             Player.Teleport(Checkpoint);
+            Damaged?.Invoke(reason);
         }
 
         public void OpenRoad()
@@ -89,6 +104,7 @@ namespace CityCourier
             RoadOpen = true;
             Road.SetActive(true);
             RoadBarrier.SetActive(false);
+            RoadOpened?.Invoke();
             Debug.Log("[도로 개방] 다리가 연결되었습니다. 편지를 모두 모은 뒤 초록색 목적지로 이동하세요.");
         }
 
