@@ -8,6 +8,7 @@ namespace CityCourier
     {
         const string ContainerName = "Cyberpunk City Props";
 
+        [System.Serializable]
         struct TrafficSpinner
         {
             public Transform Transform;
@@ -18,8 +19,8 @@ namespace CityCourier
             public float BobPhase;
         }
 
-        readonly List<TrafficSpinner> spinners = new List<TrafficSpinner>();
-        readonly List<Transform> rotatingRings = new List<Transform>();
+        [SerializeField] List<TrafficSpinner> spinners = new List<TrafficSpinner>();
+        [SerializeField] List<Transform> rotatingRings = new List<Transform>();
 
         Material darkHullMat;
         Material wetAsphaltMat;
