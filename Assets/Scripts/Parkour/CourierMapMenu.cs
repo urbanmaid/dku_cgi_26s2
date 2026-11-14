@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 
 namespace CityCourier
 {
@@ -12,6 +13,7 @@ namespace CityCourier
         public bool IsOpen { get; private set; }
         public int CurrentMap { get; private set; } = -1;
         int selected;
+        bool returningToMenu;
         float previousTimeScale = 1;
         readonly Vector3 spawn = new Vector3(0, 0.1f, -8);
         public Vector3 PracticeCheckpoint { get; private set; } = new Vector3(0, 0.1f, -8);
@@ -60,6 +62,17 @@ namespace CityCourier
                 Player.Teleport(PracticeCheckpoint);
         }
 
+        public void ReturnToMenu()
+        {
+            if (returningToMenu) return;
+            returningToMenu = true;
+            previousTimeScale = 1;
+            Time.timeScale = 1;
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            SceneManager.LoadSceneAsync("MenuScene");
+        }
+
         void LateUpdate()
         {
             if (!IsOpen) return;
@@ -73,7 +86,7 @@ namespace CityCourier
             float scale = Mathf.Max(0.25f, Mathf.Min(Screen.width / 800f, Screen.height / 500f));
             var oldMatrix = GUI.matrix;
             GUI.matrix = Matrix4x4.TRS(new Vector3(Screen.width / 2f, Screen.height / 2f, 0), Quaternion.identity, Vector3.one * scale);
-            GUI.Box(new Rect(-310, -195, 620, 390), "");
+            GUI.Box(new Rect(-310, -195, 620, 435), "");
             var title = new GUIStyle(GUI.skin.label) { fontSize = 28, alignment = TextAnchor.MiddleCenter };
             var body = new GUIStyle(GUI.skin.label) { fontSize = 17, alignment = TextAnchor.MiddleCenter, wordWrap = true };
             var button = new GUIStyle(GUI.skin.button) { fontSize = 20 };
@@ -83,7 +96,10 @@ namespace CityCourier
                 ? "도시 파쿠르 코스에서 편지를 모아 배달하세요."
                 : "도시 배경과 평평한 바닥으로 구성된 빈 맵입니다.", body);
             if (GUI.Button(new Rect(-180, 65, 360, 55), "선택한 맵 플레이", button)) PlayMap(selected);
-            GUI.Label(new Rect(-280, 135, 560, 45), "WASD 이동 · Space 점프 · Esc 맵 선택\n맵 01의 진행 상태는 플레이 세션 동안 유지됩니다.", body);
+            GUI.enabled = !returningToMenu;
+            if (GUI.Button(new Rect(-180, 130, 360, 45), "메뉴로 돌아가기", button)) ReturnToMenu();
+            GUI.enabled = true;
+            GUI.Label(new Rect(-280, 185, 560, 45), "WASD 이동 · Space 점프 · Esc 맵 선택\n메뉴로 돌아가면 현재 맵 진행 상태가 초기화됩니다.", body);
             GUI.matrix = oldMatrix;
         }
 
